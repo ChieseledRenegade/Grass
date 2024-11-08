@@ -3,7 +3,11 @@ using System.Collections.Generic;
 using static System.Runtime.InteropServices.Marshal;
 using UnityEngine;
 
-public class ModelGrass : MonoBehaviour {
+public class ModelGrass : MonoBehaviour
+{
+    public Transform newPositionForGrass;
+    public Camera respectiveCamera;
+    public Transform playerPos;
     public int fieldSize = 100;
     public int chunkDensity = 1;
     public int numChunks = 1;
@@ -12,7 +16,7 @@ public class ModelGrass : MonoBehaviour {
     public Mesh grassMesh;
     public Mesh grassLODMesh;
     public Texture heightMap;
-
+    [Header("X and Y Offset")] public int x, y;
     [Range(0, 1000.0f)]
     public float lodCutoff = 1000.0f;
 
@@ -108,7 +112,8 @@ public class ModelGrass : MonoBehaviour {
 
         initializeChunks();
 
-        fieldBounds = new Bounds(Vector3.zero, new Vector3(-fieldSize, displacementStrength * 2, fieldSize));
+        fieldBounds = new Bounds(newPositionForGrass.transform.position, 
+            new Vector3(-fieldSize, displacementStrength * 2, fieldSize));
     }
 
     void initializeChunks() {
@@ -129,16 +134,15 @@ public class ModelGrass : MonoBehaviour {
 
         chunk.argsBuffer.SetData(args);
         chunk.argsBufferLOD.SetData(argsLOD);
-
         chunk.positionsBuffer = new ComputeBuffer(numInstancesPerChunk, SizeOf(typeof(GrassData)));
         chunk.culledPositionsBuffer = new ComputeBuffer(numInstancesPerChunk, SizeOf(typeof(GrassData)));
         int chunkDim = Mathf.CeilToInt(fieldSize / numChunks);
         
-        Vector3 c = new Vector3(0.0f, 0.0f, 0.0f);
+        Vector3 c = newPositionForGrass.transform.position;
         
         c.y = 0.0f;
-        c.x = -(chunkDim * 0.5f * numChunks) + chunkDim * xOffset;
-        c.z = -(chunkDim * 0.5f * numChunks) + chunkDim * yOffset;
+        c.x = (-(chunkDim * 0.5f * numChunks) + chunkDim * xOffset)+(int)newPositionForGrass.position.x;
+        c.z = (-(chunkDim * 0.5f * numChunks) + chunkDim * yOffset)+(int)newPositionForGrass.position.z;
         c.x += chunkDim * 0.5f;
         c.z += chunkDim * 0.5f;
         
@@ -169,7 +173,8 @@ public class ModelGrass : MonoBehaviour {
         cullGrassShader.SetMatrix("MATRIX_VP", VP);
         cullGrassShader.SetBuffer(0, "_GrassDataBuffer", chunk.positionsBuffer);
         cullGrassShader.SetBuffer(0, "_VoteBuffer", voteBuffer);
-        cullGrassShader.SetVector("_CameraPosition", Camera.main.transform.position);
+        cullGrassShader.SetVector( "_PlayerPosition", playerPos.transform.position);
+        //cullGrassShader.SetVector("_CameraPosition", Camera.main.transform.position);
         cullGrassShader.SetFloat("_Distance", distanceCutoff);
         cullGrassShader.Dispatch(0, numVoteThreadGroups, 1, 1);
 
@@ -204,18 +209,18 @@ public class ModelGrass : MonoBehaviour {
     }
 
     void Update() {
-        Matrix4x4 P = Camera.main.projectionMatrix;
-        Matrix4x4 V = Camera.main.transform.worldToLocalMatrix;
-        Matrix4x4 VP = P * V;
-
+        Matrix4x4 P = respectiveCamera.projectionMatrix;
+        Matrix4x4 V = respectiveCamera.transform.worldToLocalMatrix;
+        Matrix4x4 VP = (P) * (V) * Matrix4x4.zero;
+        
         GenerateWind();
 
         for (int i = 0; i < numChunks * numChunks; ++i) {
-            float dist = Vector3.Distance(Camera.main.transform.position, chunks[i].bounds.center);
+            float dist = Vector3.Distance(respectiveCamera.transform.position, chunks[i].bounds.center);
 
             bool noLOD = dist < lodCutoff;
 
-            CullGrass(chunks[i], VP, noLOD);
+           CullGrass(chunks[i], VP, noLOD);
             if (noLOD)
                 Graphics.DrawMeshInstancedIndirect(grassMesh, 0, chunks[i].material, fieldBounds, chunks[i].argsBuffer);
             else
